@@ -14,8 +14,6 @@ This lab provisions two AKS clusters side-by-side in **Italy North** to demonstr
 | `webhook-app.yaml` | Sample deployment targeting the **webhook** nodepool |
 | `sim-kubenet-architecture.excalidraw` | Architecture diagram for the kubenet cluster |
 | `sim-podsubnet-architecture.excalidraw` | Architecture diagram for the pod-subnet cluster |
-| `example-output-kubenet.txt` | Reference run output for the kubenet script |
-| `examplle-output-podsubnet.txt` | Reference run output for the pod-subnet script |
 
 ---
 
