@@ -1,0 +1,120 @@
+# =============================================================================
+# user-app.yaml – Sample application for the "user" nodepool
+# =============================================================================
+# Scheduling:
+#   nodeSelector  → targets nodes with label role=user (set via --node-labels)
+#   No tolerations needed – the user nodepool has no taints, but the webhook
+#   nodepool has "webhook=true:NoSchedule" so this app cannot land there.
+#   The system nodepool has "CriticalAddonsOnly=true:NoSchedule" so this app
+#   cannot land there either.
+#
+# Egress:
+#   Nodes in the user nodepool sit on subnet-nodes (kubenet) or
+#   subnet-nodes/subnet-pods (Azure CNI pod-subnet).  Neither of those subnets
+#   has a NAT GW attached, so outbound traffic flows through the cluster Load
+#   Balancer outbound rules – NOT through the webhook NAT GW.
+# =============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: user-app
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-app
+  namespace: user-app
+  labels:
+    app: user-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: user-app
+  template:
+    metadata:
+      labels:
+        app: user-app
+    spec:
+      # ── Scheduling: target the user nodepool only ───────────────────────────
+      nodeSelector:
+        role: user              # matches --node-labels "role=user" on the nodepool
+
+      # No tolerations → pods cannot land on system or webhook nodepools
+      # (both have NoSchedule taints this app does not tolerate)
+
+      # ── Pod anti-affinity: spread across nodes for resilience ───────────────
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - user-app
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: user-app
+          # curlimages/curl: lightweight Alpine-based image with curl.
+          # Runs as non-root (uid 100). Used for egress verification via kubectl exec.
+          image: curlimages/curl:latest
+          command: ["sh", "-c", "while true; do sleep 60; done"]
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 100
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-app
+  namespace: user-app
+  labels:
+    app: user-app
+spec:
+  selector:
+    app: user-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
+---
+# Optional: expose externally for quick testing
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: user-app-lb
+#   namespace: user-app
+#   labels:
+#     app: user-app
+# spec:
+#   selector:
+#     app: user-app
+#   ports:
+#     - name: http
+#       port: 80
+#       targetPort: 8080
+#       protocol: TCP
+#   type: LoadBalancer
